@@ -5,17 +5,23 @@ module.exports = async ({ getNamedAccounts, deployments, ethers }) => {
   console.log("Deploying contracts with deployer:", deployer);
 
   // 部署 MetaNode 代币 (奖励代币)
-  const metaNodeToken = await deploy("MetaNodeToken", {
-    contract: "MetaNodeToken",
+  const metaNodeToken = await deploy("MetaNode", {
+    contract: "MetaNode",
     from: deployer,
-    args: [],
+    proxy: {
+      proxyContract: "OpenZeppelinTransparentProxy", 
+      execute: {
+        init: {
+          methodName: "initialize",
+          args: [deployer, deployer] // recipient and initialOwner
+        }
+      }
+    },
     log: true,
   });
 
   // 部署质押合约 (使用代理模式)
-  const startBlock = await ethers.provider.getBlockNumber() ; // 立即开始
-  const endBlock = startBlock + 100000; // 持续100000个区块
-  const metaNodePerBlock = ethers.utils.parseEther("1"); // 每区块1个META奖励
+  const metaNodePerBlock = ethers.parseUnits("100", 18); // 每区块100个META奖励
 
   const metaNodeStake = await deploy("MetaNodeStake", {
     from: deployer,
@@ -26,8 +32,6 @@ module.exports = async ({ getNamedAccounts, deployments, ethers }) => {
           methodName: "initialize",
           args: [
             metaNodeToken.address,
-            startBlock,
-            endBlock,
             metaNodePerBlock
           ]
         }
@@ -38,18 +42,16 @@ module.exports = async ({ getNamedAccounts, deployments, ethers }) => {
 
   console.log("MetaNodeStake proxy deployed to:", metaNodeStake.address);
   console.log("MetaNode Token deployed to:", metaNodeToken.address);
-  console.log("Start Block:", startBlock);
-  console.log("End Block:", endBlock);
-  console.log("MetaNode Per Block:", ethers.utils.formatEther(metaNodePerBlock));
+  console.log("MetaNode Per Block:", ethers.formatUnits(metaNodePerBlock, 18));
 
   // 转移一些 MetaNode 代币到质押合约用于奖励分发
   const signer = await ethers.getSigner(deployer);
-  const metaNodeContract = await ethers.getContractAt("MetaNodeToken", metaNodeToken.address, signer);
-  const rewardAmount = ethers.utils.parseEther("500000"); // 50万个代币用于奖励
+  const metaNodeContract = await ethers.getContractAt("MetaNode", metaNodeToken.address, signer);
+  const rewardAmount = ethers.parseEther("500000"); // 50万个代币用于奖励
   
   await metaNodeContract.transfer(metaNodeStake.address, rewardAmount);
-  console.log("Transferred", ethers.utils.formatEther(rewardAmount), "META tokens to staking contract");
+  console.log("Transferred", ethers.formatEther(rewardAmount), "META tokens to staking contract");
 };
 
-module.exports.tags = ["MetaNodeStake"];
+module.exports.tags = ["MetaNodeStake", "MetaNode"];
 module.exports.dependencies = [];
