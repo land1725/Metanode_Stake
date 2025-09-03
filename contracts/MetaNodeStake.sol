@@ -315,17 +315,30 @@ contract MetaNodeStake is
         if (pendingMetaNode > 0) {
             userInfo.pendingMetaNode += pendingMetaNode;
         }
+        
+        // 🔧 修复fee-on-transfer问题：记录转账前后的余额变化
+        uint256 balanceBefore = IERC20(poolInfo.stTokenAddress).balanceOf(address(this));
+        
         // 转账质押代币
         IERC20(poolInfo.stTokenAddress).safeTransferFrom(
             msg.sender,
             address(this),
             _amount
         );
-        userInfo.stAmount += _amount;
-        poolInfo.stTokenAmount += _amount;
+        
+        // 计算实际收到的代币数量（处理fee-on-transfer代币）
+        uint256 balanceAfter = IERC20(poolInfo.stTokenAddress).balanceOf(address(this));
+        uint256 actualAmount = balanceAfter - balanceBefore;
+        
+        // 确保实际收到的数量不为零
+        require(actualAmount > 0, "no tokens received");
+        
+        // 使用实际收到的数量更新状态
+        userInfo.stAmount += actualAmount;
+        poolInfo.stTokenAmount += actualAmount;
         // 更新finishedMetaNode（使用正确的精度）
         userInfo.finishedMetaNode = (userInfo.stAmount * poolInfo.accMetaNodePerST) / (1 ether);
-        emit Deposit(msg.sender, _pid, _amount);
+        emit Deposit(msg.sender, _pid, actualAmount);
     }
 
     // 2.1 质押功能,• 输入参数: 池 ID(_pid)，质押ETH数量(_amount)。,后置条件: 用户的质押ETH数量增加，池中的总质押代币数量更新。,• 异常处理: 质押数量低于最小质押要求时拒绝交易。
@@ -457,7 +470,10 @@ contract MetaNodeStake is
         userInfo.pendingMetaNode = 0;
         userInfo.finishedMetaNode = (userInfo.stAmount * poolInfo.accMetaNodePerST) / (1 ether);
         
-        // 转账MetaNode奖励
+        // 转账MetaNode奖励 - 检查余额以防MetaNode代币也是fee-on-transfer
+        uint256 contractBalance = MetaNode.balanceOf(address(this));
+        require(contractBalance >= totalReward, "insufficient reward tokens in contract");
+        
         MetaNode.safeTransfer(msg.sender, totalReward);
         emit Claim(msg.sender, _pid, totalReward);
     }
