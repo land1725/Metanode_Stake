@@ -85,10 +85,11 @@ contract MetaNodeStake is
     // MetaNode token reward per block
     uint256 public MetaNodePerBlock;
 
-    // Pause the withdraw function
-    // bool public withdrawPaused;
-    // Pause the claim function
-    // bool public claimPaused;
+    // 细粒度暂停控制
+    bool public stakingPaused;     // 暂停质押功能
+    bool public unstakingPaused;   // 暂停解除质押功能
+    bool public withdrawPaused;    // 暂停提取功能
+    bool public claimPaused;       // 暂停领奖功能
 
     // MetaNode token
     IERC20 public MetaNode;
@@ -141,22 +142,34 @@ contract MetaNodeStake is
         uint256 MetaNodeReward
     );
 
+    // 暂停控制事件
+    event StakingPaused(bool paused);
+    event UnstakingPaused(bool paused);
+    event WithdrawPaused(bool paused);
+    event ClaimPaused(bool paused);
+    event GlobalPaused(bool paused);
+
     // ************************************** MODIFIER **************************************
 
-    // modifier checkPid(uint256 _pid) {
-    //     require(_pid < pool.length, "invalid pid");
-    //     _;
-    // }
+    modifier whenStakingNotPaused() {
+        require(!stakingPaused && !paused(), "staking is paused");
+        _;
+    }
 
-    // modifier whenNotClaimPaused() {
-    //     require(!claimPaused, "claim is paused");
-    //     _;
-    // }
+    modifier whenUnstakingNotPaused() {
+        require(!unstakingPaused && !paused(), "unstaking is paused");
+        _;
+    }
 
-    // modifier whenNotWithdrawPaused() {
-    //     require(!withdrawPaused, "withdraw is paused");
-    //     _;
-    // }
+    modifier whenWithdrawNotPaused() {
+        require(!withdrawPaused && !paused(), "withdraw is paused");
+        _;
+    }
+
+    modifier whenClaimNotPaused() {
+        require(!claimPaused && !paused(), "claim is paused");
+        _;
+    }
 
     /**
      * @notice Set MetaNode token address. Set basic info when deploying.
@@ -210,6 +223,81 @@ contract MetaNodeStake is
         emit SetMetaNode(_MetaNode);
     }
 
+    // ************************************** 暂停控制函数 **************************************
+
+    /**
+     * @notice 全局暂停/恢复所有操作
+     * @param _paused 是否暂停
+     */
+    function pauseGlobal(bool _paused) external onlyRole(ADMIN_ROLE) {
+        if (_paused) {
+            _pause();
+        } else {
+            _unpause();
+        }
+        emit GlobalPaused(_paused);
+    }
+
+    /**
+     * @notice 单独控制质押功能的暂停/恢复
+     * @param _paused 是否暂停质押
+     */
+    function pauseStaking(bool _paused) external onlyRole(ADMIN_ROLE) {
+        stakingPaused = _paused;
+        emit StakingPaused(_paused);
+    }
+
+    /**
+     * @notice 单独控制解除质押功能的暂停/恢复
+     * @param _paused 是否暂停解除质押
+     */
+    function pauseUnstaking(bool _paused) external onlyRole(ADMIN_ROLE) {
+        unstakingPaused = _paused;
+        emit UnstakingPaused(_paused);
+    }
+
+    /**
+     * @notice 单独控制提取功能的暂停/恢复
+     * @param _paused 是否暂停提取
+     */
+    function pauseWithdraw(bool _paused) external onlyRole(ADMIN_ROLE) {
+        withdrawPaused = _paused;
+        emit WithdrawPaused(_paused);
+    }
+
+    /**
+     * @notice 单独控制领奖功能的暂停/恢复
+     * @param _paused 是否暂停领奖
+     */
+    function pauseClaim(bool _paused) external onlyRole(ADMIN_ROLE) {
+        claimPaused = _paused;
+        emit ClaimPaused(_paused);
+    }
+
+    /**
+     * @notice 批量设置所有暂停状态
+     * @param _stakingPaused 质押暂停状态
+     * @param _unstakingPaused 解除质押暂停状态
+     * @param _withdrawPaused 提取暂停状态
+     * @param _claimPaused 领奖暂停状态
+     */
+    function setPausedStates(
+        bool _stakingPaused,
+        bool _unstakingPaused,
+        bool _withdrawPaused,
+        bool _claimPaused
+    ) external onlyRole(ADMIN_ROLE) {
+        stakingPaused = _stakingPaused;
+        unstakingPaused = _unstakingPaused;
+        withdrawPaused = _withdrawPaused;
+        claimPaused = _claimPaused;
+        
+        emit StakingPaused(_stakingPaused);
+        emit UnstakingPaused(_unstakingPaused);
+        emit WithdrawPaused(_withdrawPaused);
+        emit ClaimPaused(_claimPaused);
+    }
+
     // 添加质押池
     function addPool(
         address _stTokenAddress,
@@ -257,6 +345,14 @@ contract MetaNodeStake is
         );
     }
 
+    /**
+     * @notice 获取池子数量
+     * @return 池子总数
+     */
+    function getPoolLength() external view returns (uint256) {
+        return pool.length;
+    }
+
     // 更新流动性池信息,主要更新累计每质押代币的MetaNode数量等信息
     function updatePoolInfo(uint256 _pid) public whenNotPaused {
         require(_pid < pool.length, "invalid pid");
@@ -291,7 +387,7 @@ contract MetaNodeStake is
     }
 
     // 2.1 质押功能,• 输入参数: 池 ID(_pid)，质押ERC20数量(_amount)。,• 前置条件: 用户已授权足够的代币给合约。,• 后置条件: 用户的质押代币数量增加，池中的总质押代币数量更新。,• 异常处理: 质押数量低于最小质押要求时拒绝交易。,
-    function stakeERC20(uint256 _pid, uint256 _amount) external whenNotPaused nonReentrant {
+    function stakeERC20(uint256 _pid, uint256 _amount) external whenStakingNotPaused nonReentrant {
         require(_pid < pool.length, "invalid pid");
         require(_pid != ETH_PID, "use stakeETH for ETH pool");
         require(pool[_pid].stTokenAddress != address(0), "not ERC20 pool");
@@ -342,7 +438,7 @@ contract MetaNodeStake is
     }
 
     // 2.1 质押功能,• 输入参数: 池 ID(_pid)，质押ETH数量(_amount)。,后置条件: 用户的质押ETH数量增加，池中的总质押代币数量更新。,• 异常处理: 质押数量低于最小质押要求时拒绝交易。
-    function stakeETH(uint256 _pid) external payable whenNotPaused nonReentrant {
+    function stakeETH(uint256 _pid) external payable whenStakingNotPaused nonReentrant {
         require(msg.value > 0, "invalid ETH amount");
         require(_pid == ETH_PID, "must use ETH_PID for ETH staking");
         require(_pid < pool.length, "invalid pid");
@@ -374,7 +470,7 @@ contract MetaNodeStake is
     }
 
     // 2.2 解除质押功能,• 输入参数: 池 ID(_pid)，解除质押数量(_amount)。,• 前置条件: 用户质押的代币数量足够。,• 后置条件: 用户的质押代币数量减少，解除质押请求记录，等待锁定期结束后可提取。,• 异常处理: 如果解除质押数量大于用户质押的数量，交易失败。,
-    function unStake(uint256 _pid, uint256 _amount) external whenNotPaused {
+    function unStake(uint256 _pid, uint256 _amount) external whenUnstakingNotPaused {
         require(_amount > 0, "invalid unstake amount");
         require(_pid < pool.length, "invalid pid");
         User storage userInfo = user[_pid][msg.sender];
@@ -408,7 +504,7 @@ contract MetaNodeStake is
     }
 
     // 2.3 遍历用户的解除质押请求，检查是否有请求已到达解锁区块，如果有则处理这些请求，将相应的代币数量转回用户地址。,• 输入参数: 池 ID(_pid)。,• 前置条件: 用户有未处理的解除质押请求。,• 后置条件: 已解锁的解除质押请求被处理，用户收到相应的代币。,• 异常处理: 如果没有任何请求达到解锁区块，交易失败。
-    function withdraw(uint256 _pid) external whenNotPaused nonReentrant {
+    function withdraw(uint256 _pid) external whenWithdrawNotPaused nonReentrant {
         require(_pid < pool.length, "invalid pid");
         User storage userInfo = user[_pid][msg.sender];
         
@@ -449,7 +545,7 @@ contract MetaNodeStake is
         emit Withdraw(msg.sender, _pid, totalWithdrawAmount, block.number);
     }
     // 2.3 领取奖励,• 输入参数: 池 ID(_pid)。,• 前置条件: 有可领取的奖励。,• 后置条件: 用户领取其奖励，清除已领取的奖励记录。,• 异常处理: 如果没有可领取的奖励，不执行任何操作。
-    function claimReward(uint256 _pid) external whenNotPaused nonReentrant {
+    function claimReward(uint256 _pid) external whenClaimNotPaused nonReentrant {
         require(_pid < pool.length, "invalid pid");
         User storage userInfo = user[_pid][msg.sender];
         // 先更新池子信息以获取最新的奖励

@@ -21,7 +21,7 @@ module.exports = async ({ getNamedAccounts, deployments, ethers }) => {
   });
 
   // 部署质押合约 (使用代理模式)
-  const metaNodePerBlock = ethers.parseUnits("100", 18); // 每区块100个META奖励
+  const metaNodePerBlock = ethers.utils.parseUnits("100", 18); // 每区块100个META奖励
 
   const metaNodeStake = await deploy("MetaNodeStake", {
     from: deployer,
@@ -42,15 +42,15 @@ module.exports = async ({ getNamedAccounts, deployments, ethers }) => {
 
   console.log("MetaNodeStake proxy deployed to:", metaNodeStake.address);
   console.log("MetaNode Token deployed to:", metaNodeToken.address);
-  console.log("MetaNode Per Block:", ethers.formatUnits(metaNodePerBlock, 18));
+  console.log("MetaNode Per Block:", ethers.utils.formatUnits(metaNodePerBlock, 18));
 
   // 转移一些 MetaNode 代币到质押合约用于奖励分发
   const signer = await ethers.getSigner(deployer);
   const metaNodeContract = await ethers.getContractAt("MetaNode", metaNodeToken.address, signer);
-  const rewardAmount = ethers.parseEther("500000"); // 50万个代币用于奖励
+  const rewardAmount = ethers.utils.parseEther("500000"); // 50万个代币用于奖励
   
   await metaNodeContract.transfer(metaNodeStake.address, rewardAmount);
-  console.log("Transferred", ethers.formatEther(rewardAmount), "META tokens to staking contract");
+  console.log("Transferred", ethers.utils.formatEther(rewardAmount), "META tokens to staking contract");
 };
 
 module.exports.tags = ["MetaNodeStake", "MetaNode"];
