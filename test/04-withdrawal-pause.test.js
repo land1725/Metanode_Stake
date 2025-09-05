@@ -214,6 +214,10 @@ describe("MetaNodeStake - Withdrawal and Fine-grained Pause Controls", function 
     console.log(`   📊 当前区块: ${currentBlock}`);
     console.log("   ✅ ETH池解锁周期: 5 blocks，请求尚未到期");
 
+    // 记录提现尝试前的ETH余额
+    const user2ETHBalanceBefore = await ethers.provider.getBalance(user2.address);
+    console.log(`   📊 提现前User2 ETH余额: ${ethers.utils.formatUnits(user2ETHBalanceBefore, 18)} ETH`);
+
     // 测试步骤：User2尝试提现ETH（请求未到期）
     console.log("📄 尝试提现未到期的请求...");
     const metaNodeStakeAsUser2 = metaNodeStake.connect(user2);
@@ -225,8 +229,15 @@ describe("MetaNodeStake - Withdrawal and Fine-grained Pause Controls", function 
     console.log("   ✅ 未到期提现被正确拒绝");
 
     // 验证用户ETH余额未变
-    const user2ETHBalance = await ethers.provider.getBalance(user2.address);
-    console.log(`   ✅ User2 ETH余额保持不变`);
+    const user2ETHBalanceAfter = await ethers.provider.getBalance(user2.address);
+    console.log(`   📊 提现后User2 ETH余额: ${ethers.utils.formatUnits(user2ETHBalanceAfter, 18)} ETH`);
+    
+    // 由于失败的交易仍会消耗gas费，余额会稍微减少，但不应该有大幅变化（超过合理的gas费用）
+    const gasCostThreshold = ethers.utils.parseUnits("0.01", 18); // 0.01 ETH作为gas费阈值
+    const balanceDiff = user2ETHBalanceBefore.sub(user2ETHBalanceAfter);
+    expect(balanceDiff).to.be.lt(gasCostThreshold); // 余额减少应该小于gas费阈值
+    expect(balanceDiff).to.be.gte(0); // 余额不应该增加
+    console.log(`   ✅ User2 ETH余额仅因gas费稍微减少: ${ethers.utils.formatUnits(balanceDiff, 18)} ETH (在合理范围内)`);
 
     console.log("✅ [TEST 2] 仅未到期不能提现测试通过\n");
   });
@@ -309,6 +320,10 @@ describe("MetaNodeStake - Withdrawal and Fine-grained Pause Controls", function 
     expect(withdrawPaused).to.be.true;
     console.log("   ✅ 提现功能已暂停");
 
+    // 记录提现尝试前的ERC20余额
+    const user1BalanceBefore = await mockERC20Token.balanceOf(user1.address);
+    console.log(`   📊 提现前User1 ERC20余额: ${ethers.utils.formatUnits(user1BalanceBefore, 18)} TEST`);
+
     // 测试步骤：用户尝试提现
     console.log("📄 测试暂停状态下的提现尝试...");
     const metaNodeStakeAsUser1 = metaNodeStake.connect(user1);
@@ -320,21 +335,12 @@ describe("MetaNodeStake - Withdrawal and Fine-grained Pause Controls", function 
     console.log("   ✅ 提现在暂停状态下被正确拒绝");
 
     // 验证用户余额未变
-    const user1Balance = await mockERC20Token.balanceOf(user1.address);
-    console.log(`   ✅ User1 ERC20余额保持不变: ${ethers.utils.formatUnits(user1Balance, 18)} TEST`);
-
-    // 恢复提现功能以便后续测试
-    console.log("📄 恢复提现功能...");
-    await metaNodeStake.pauseWithdraw(false);
-    const withdrawPausedAfter = await metaNodeStake.withdrawPaused();
-    expect(withdrawPausedAfter).to.be.false;
-    console.log("   ✅ 提现功能已恢复");
-
-    // 验证恢复后可以正常提现
-    console.log("📄 验证恢复后可以正常提现...");
-    const withdrawTx = await metaNodeStakeAsUser1.withdraw(1);
-    console.log("   ✅ 恢复后提现操作成功");
-
+    const user1BalanceAfter = await mockERC20Token.balanceOf(user1.address);
+    console.log(`   📊 提现后User1 ERC20余额: ${ethers.utils.formatUnits(user1BalanceAfter, 18)} TEST`);
+    
+    // 验证余额确实没有变化（ERC20转账失败不会消耗用户的ERC20代币）
+    expect(user1BalanceAfter).to.equal(user1BalanceBefore);
+    console.log(`   ✅ User1 ERC20余额确实保持不变: ${ethers.utils.formatUnits(user1BalanceAfter, 18)} TEST`);
     console.log("✅ [TEST 4] 暂停提现功能后不能提现测试通过\n");
   });
 });

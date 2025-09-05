@@ -149,6 +149,9 @@ contract MetaNodeStake is
     event ClaimPaused(bool paused);
     event GlobalPaused(bool paused);
 
+    // 管理员提取事件
+    event AdminWithdraw(address indexed admin, uint256 amount);
+
     // ************************************** MODIFIER **************************************
 
     modifier whenStakingNotPaused() {
@@ -572,6 +575,35 @@ contract MetaNodeStake is
         
         MetaNode.safeTransfer(msg.sender, totalReward);
         emit Claim(msg.sender, _pid, totalReward);
+    }
+
+    // ************************************** ADMIN FUNCTIONS **************************************
+
+    /**
+     * @notice Withdraw MetaNode tokens from contract (Admin only)
+     * @param _amount Amount of MetaNode tokens to withdraw
+     * @dev Only admin can withdraw MetaNode tokens for emergency purposes
+     */
+    function withdrawMetaNodeTokens(uint256 _amount) external nonReentrant onlyRole(ADMIN_ROLE) {
+        require(_amount > 0, "amount must be greater than 0");
+        
+        uint256 contractBalance = MetaNode.balanceOf(address(this));
+        require(contractBalance >= _amount, "insufficient MetaNode tokens in contract");
+        
+        MetaNode.safeTransfer(msg.sender, _amount);
+        emit AdminWithdraw(msg.sender, _amount);
+    }
+
+    /**
+     * @notice Withdraw all MetaNode tokens from contract (Admin only)
+     * @dev Only admin can withdraw all MetaNode tokens for emergency purposes
+     */
+    function withdrawAllMetaNodeTokens() external nonReentrant onlyRole(ADMIN_ROLE) {
+        uint256 contractBalance = MetaNode.balanceOf(address(this));
+        require(contractBalance > 0, "no MetaNode tokens to withdraw");
+        
+        MetaNode.safeTransfer(msg.sender, contractBalance);
+        emit AdminWithdraw(msg.sender, contractBalance);
     }
 
     // ************************************** RECEIVE ETH **************************************
